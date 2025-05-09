@@ -2,7 +2,6 @@ var express = require('express');
 var router = express.Router();
 const transcriptProcessor = require('../services/transcriptProcessor');
 const axios = require('axios');
-const { text } = require('../services/sampleText');
 require('dotenv').config();
 const db = require('../db');
 /* POST webex page. */
