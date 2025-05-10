@@ -86,7 +86,7 @@ async function getJiraCloudId(accessToken) {
             'Authorization': `Bearer ${accessToken}`
         }
     });
-    return response.data[0].cloudId;
+    return response.data[0].id;
 }
 
 async function fetchTranscript(transcriptId, accessToken) {
