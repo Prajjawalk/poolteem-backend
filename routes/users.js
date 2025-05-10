@@ -19,16 +19,14 @@ const authenticateToken = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    db.get('SELECT * FROM users WHERE id = ?', [decoded.userId], (err, user) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      if (!user) {
-        return res.status(401).json({ error: 'User not found' });
-      }
-      req.user = user;
-      next();
-    });
+    const result = await db.query('SELECT * FROM users WHERE id = $1', [decoded.userId]);
+    const user = result.rows[0];
+    
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+    req.user = user;
+    next();
   } catch (error) {
     return res.status(403).json({ error: 'Invalid token' });
   }
@@ -45,51 +43,37 @@ router.post('/auth/google', async (req, res) => {
 
     const payload = ticket.getPayload();
     
-    db.get('SELECT * FROM users WHERE google_id = ?', [payload.sub], (err, user) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
+    const result = await db.query('SELECT * FROM users WHERE google_id = $1', [payload.sub]);
+    const user = result.rows[0];
 
-      if (!user) {
-        // Create new user
-        const stmt = db.prepare(`
-          INSERT INTO users (name, email, google_id)
-          VALUES (?, ?, ?)
-        `);
-        
-        stmt.run([payload.name, payload.email, payload.sub], function(err) {
-          if (err) {
-            return res.status(500).json({ error: 'Error creating user' });
-          }
+    if (!user) {
+      // Create new user
+      const insertResult = await db.query(
+        'INSERT INTO users (name, email, google_id) VALUES ($1, $2, $3) RETURNING *',
+        [payload.name, payload.email, payload.sub]
+      );
+      
+      const newUser = insertResult.rows[0];
+      const jwtToken = jwt.sign(
+        { userId: newUser.id },
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+      );
 
-          const jwtToken = jwt.sign(
-            { userId: this.lastID },
-            process.env.JWT_SECRET,
-            { expiresIn: '24h' }
-          );
+      res.json({ 
+        token: jwtToken, 
+        user: newUser
+      });
+    } else {
+      // Existing user
+      const jwtToken = jwt.sign(
+        { userId: user.id },
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+      );
 
-          res.json({ 
-            token: jwtToken, 
-            user: {
-              id: this.lastID,
-              name: payload.name,
-              email: payload.email,
-              google_id: payload.sub
-            }
-          });
-        });
-        stmt.finalize();
-      } else {
-        // Existing user
-        const jwtToken = jwt.sign(
-          { userId: user.id },
-          process.env.JWT_SECRET,
-          { expiresIn: '24h' }
-        );
-
-        res.json({ token: jwtToken, user });
-      }
-    });
+      res.json({ token: jwtToken, user });
+    }
   } catch (error) {
     res.status(401).json({ error: 'Invalid Google token' });
   }
@@ -100,25 +84,13 @@ router.post('/profile', authenticateToken, async (req, res) => {
   try {
     const { name, username } = req.body;
     
-    const stmt = db.prepare(`
-      UPDATE users 
-      SET name = ?, username = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
-    
-    stmt.run([name, username, req.user.id], function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Error updating profile' });
-      }
+    await db.query(
+      'UPDATE users SET name = $1, username = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
+      [name, username, req.user.id]
+    );
 
-      db.get('SELECT * FROM users WHERE id = ?', [req.user.id], (err, updatedUser) => {
-        if (err) {
-          return res.status(500).json({ error: 'Error fetching updated user' });
-        }
-        res.json(updatedUser);
-      });
-    });
-    stmt.finalize();
+    const result = await db.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
+    res.json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ error: 'Error updating profile' });
   }
@@ -135,37 +107,31 @@ router.post('/jira-tokens', authenticateToken, async (req, res) => {
     }
 
     // Check current tokens and expiry
-    db.get('SELECT jira_access_token, jira_refresh_token, jira_token_expiry FROM users WHERE id = ?', [req.user.id], (err, user) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
+    const result = await db.query(
+      'SELECT jira_access_token, jira_refresh_token, jira_token_expiry FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const user = result.rows[0];
 
-      // Check if current tokens exist and are not expired
-      const currentExpiry = user?.jira_token_expiry ? new Date(user.jira_token_expiry) : null;
-      const isExpired = currentExpiry ? currentExpiry < new Date() : true;
+    // Check if current tokens exist and are not expired
+    const currentExpiry = user?.jira_token_expiry ? new Date(user.jira_token_expiry) : null;
+    const isExpired = currentExpiry ? currentExpiry < new Date() : true;
 
-      if (!user?.jira_access_token || !user?.jira_refresh_token || isExpired) {
-        // Update tokens if current ones are missing or expired
-        const stmt = db.prepare(`
-          UPDATE users 
-          SET jira_access_token = ?,
-              jira_refresh_token = ?,
-              jira_token_expiry = ?,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `);
-        
-        stmt.run([accessToken, refreshToken, expiry, req.user.id], function(err) {
-          if (err) {
-            return res.status(500).json({ error: 'Error updating Jira tokens' });
-          }
-          res.json({ message: 'Jira tokens updated successfully' });
-        });
-        stmt.finalize();
-      } else {
-        res.status(400).json({ error: 'Current tokens are still valid' });
-      }
-    });
+    if (!user?.jira_access_token || !user?.jira_refresh_token || isExpired) {
+      // Update tokens if current ones are missing or expired
+      await db.query(
+        `UPDATE users 
+         SET jira_access_token = $1,
+             jira_refresh_token = $2,
+             jira_token_expiry = $3,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $4`,
+        [accessToken, refreshToken, expiry, req.user.id]
+      );
+      res.json({ message: 'Jira tokens updated successfully' });
+    } else {
+      res.status(400).json({ error: 'Current tokens are still valid' });
+    }
   } catch (error) {
     res.status(500).json({ error: 'Error updating Jira tokens' });
   }
@@ -182,37 +148,31 @@ router.post('/webex-tokens', authenticateToken, async (req, res) => {
     }
 
     // Check current tokens and expiry
-    db.get('SELECT webex_access_token, webex_refresh_token, webex_token_expiry FROM users WHERE id = ?', [req.user.id], (err, user) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
+    const result = await db.query(
+      'SELECT webex_access_token, webex_refresh_token, webex_token_expiry FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const user = result.rows[0];
 
-      // Check if current tokens exist and are not expired
-      const currentExpiry = user?.webex_token_expiry ? new Date(user.webex_token_expiry) : null;
-      const isExpired = currentExpiry ? currentExpiry < new Date() : true;
+    // Check if current tokens exist and are not expired
+    const currentExpiry = user?.webex_token_expiry ? new Date(user.webex_token_expiry) : null;
+    const isExpired = currentExpiry ? currentExpiry < new Date() : true;
 
-      if (!user?.webex_access_token || !user?.webex_refresh_token || isExpired) {
-        // Update tokens if current ones are missing or expired
-        const stmt = db.prepare(`
-          UPDATE users 
-          SET webex_access_token = ?,
-              webex_refresh_token = ?,
-              webex_token_expiry = ?,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `);
-        
-        stmt.run([accessToken, refreshToken, expiry, req.user.id], function(err) {
-          if (err) {
-            return res.status(500).json({ error: 'Error updating Webex tokens' });
-          }
-          res.json({ message: 'Webex tokens updated successfully' });
-        });
-        stmt.finalize();
-      } else {
-        res.status(400).json({ error: 'Current tokens are still valid' });
-      }
-    });
+    if (!user?.webex_access_token || !user?.webex_refresh_token || isExpired) {
+      // Update tokens if current ones are missing or expired
+      await db.query(
+        `UPDATE users 
+         SET webex_access_token = $1,
+             webex_refresh_token = $2,
+             webex_token_expiry = $3,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $4`,
+        [accessToken, refreshToken, expiry, req.user.id]
+      );
+      res.json({ message: 'Webex tokens updated successfully' });
+    } else {
+      res.status(400).json({ error: 'Current tokens are still valid' });
+    }
   } catch (error) {
     res.status(500).json({ error: 'Error updating Webex tokens' });
   }
@@ -221,32 +181,28 @@ router.post('/webex-tokens', authenticateToken, async (req, res) => {
 // Refresh Jira Token
 router.post('/refresh-jira-token', authenticateToken, async (req, res) => {
   try {
-    db.get('SELECT jira_refresh_token FROM users WHERE id = ?', [req.user.id], (err, user) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      if (!user || !user.jira_refresh_token) {
-        return res.status(404).json({ error: 'User or refresh token not found' });
-      }
+    const result = await db.query('SELECT jira_refresh_token FROM users WHERE id = $1', [req.user.id]);
+    const user = result.rows[0];
+    
+    if (!user || !user.jira_refresh_token) {
+      return res.status(404).json({ error: 'User or refresh token not found' });
+    }
 
-      // Implement Jira token refresh logic here
-      // This would typically involve making a request to Jira's token endpoint
-      // const newTokens = await refreshJiraToken(user.jira_refresh_token);
-      
-      // const stmt = db.prepare(`
-      //   UPDATE users 
-      //   SET jira_access_token = ?,
-      //       jira_refresh_token = ?,
-      //       jira_token_expiry = ?,
-      //       updated_at = CURRENT_TIMESTAMP
-      //   WHERE id = ?
-      // `);
-      
-      // stmt.run([newTokens.access_token, newTokens.refresh_token, new Date(Date.now() + newTokens.expires_in * 1000), req.user.id]);
-      // stmt.finalize();
+    // Implement Jira token refresh logic here
+    // This would typically involve making a request to Jira's token endpoint
+    // const newTokens = await refreshJiraToken(user.jira_refresh_token);
+    
+    // await db.query(
+    //   `UPDATE users 
+    //    SET jira_access_token = $1,
+    //        jira_refresh_token = $2,
+    //        jira_token_expiry = $3,
+    //        updated_at = CURRENT_TIMESTAMP
+    //    WHERE id = $4`,
+    //   [newTokens.access_token, newTokens.refresh_token, new Date(Date.now() + newTokens.expires_in * 1000), req.user.id]
+    // );
 
-      res.json({ message: 'Jira token refresh endpoint' });
-    });
+    res.json({ message: 'Jira token refresh endpoint' });
   } catch (error) {
     res.status(500).json({ error: 'Error refreshing Jira token' });
   }

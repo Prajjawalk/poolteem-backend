@@ -16,14 +16,16 @@ router.post('/', async function(req, res, next) {
         const webhook_id = req.body.id;
 
         // Get the webhook from the database
-        const webhook = await db.get('SELECT * FROM webex_webhooks WHERE webhook_id = ?', [webhook_id]);
+        const webhookResult = await db.query('SELECT * FROM webex_webhooks WHERE webhook_id = $1', [webhook_id]);
+        const webhook = webhookResult.rows[0];
 
         if (!webhook) {
             return res.status(200).send('Webhook not found');
         }
 
         // Get the user from the database
-        const user = await db.get('SELECT * FROM users WHERE id = ?', [webhook.user_id]);
+        const userResult = await db.query('SELECT * FROM users WHERE id = $1', [webhook.user_id]);
+        const user = userResult.rows[0];
 
         if (!user) {
             return res.status(200).send('User not found');
@@ -34,7 +36,10 @@ router.post('/', async function(req, res, next) {
         if (jiraTokenExpiry < new Date()) {
             const newJiraTokens = await refreshJiraToken(user.id);
             user.jira_access_token = newJiraTokens.access_token;
-            await db.run('UPDATE users SET jira_access_token = ?, jira_token_expiry = ? WHERE id = ?', [newJiraTokens.access_token, new Date(newJiraTokens.expires_in * 1000), user.id]);
+            await db.query(
+                'UPDATE users SET jira_access_token = $1, jira_token_expiry = $2 WHERE id = $3',
+                [newJiraTokens.access_token, new Date(newJiraTokens.expires_in * 1000), user.id]
+            );
         }
 
         // Check and update Webex access token if expired
@@ -42,7 +47,10 @@ router.post('/', async function(req, res, next) {
         if (webexTokenExpiry < new Date()) {
             const newWebexTokens = await refreshWebexToken(user.id);
             user.webex_access_token = newWebexTokens.access_token;
-            await db.run('UPDATE users SET webex_access_token = ?, webex_token_expiry = ? WHERE id = ?', [newWebexTokens.access_token, new Date(newWebexTokens.expires_in * 1000), user.id]);
+            await db.query(
+                'UPDATE users SET webex_access_token = $1, webex_token_expiry = $2 WHERE id = $3',
+                [newWebexTokens.access_token, new Date(newWebexTokens.expires_in * 1000), user.id]
+            );
         }
 
         // Get the transcript from Webex API

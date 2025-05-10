@@ -13,24 +13,24 @@ CREATE INDEX IF NOT EXISTS idx_webex_meeting_id ON transcript_snippets(webex_mee
 CREATE INDEX IF NOT EXISTS idx_jira_ticket_id ON transcript_snippets(jira_ticket_id);
 
 CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     name TEXT,
     username TEXT UNIQUE,
     email TEXT UNIQUE,
     google_id TEXT UNIQUE,
     jira_access_token TEXT,
     jira_refresh_token TEXT,
-    jira_token_expiry DATETIME,
+    jira_token_expiry TIMESTAMP,
     webex_access_token TEXT,
     webex_refresh_token TEXT,
-    webex_token_expiry DATETIME,
+    webex_token_expiry TIMESTAMP,
     webex_user_id TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-); 
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE TABLE IF NOT EXISTS webex_webhooks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     webhook_id TEXT NOT NULL,
     target_url TEXT NOT NULL,

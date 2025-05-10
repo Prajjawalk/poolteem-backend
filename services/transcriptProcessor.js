@@ -378,25 +378,26 @@ class TranscriptProcessor {
     }
 
     async storeSnippet(data) {
-        return new Promise((resolve, reject) => {
-            db.run(
+        try {
+            const result = await db.query(
                 `INSERT INTO transcript_snippets 
                 (webex_meeting_id, jira_ticket_id, original_transcript, summary, one_liner, resource_links)
-                VALUES (?, ?, ?, ?, ?, ?)`,
+                VALUES ($1, $2, $3, $4, $5, $6)
+                RETURNING *`,
                 [
                     data.webex_meeting_id,
                     data.jira_ticket_id,
-                    data.original_transcript,
+                    JSON.stringify(data.original_transcript),
                     data.summary,
                     data.one_liner,
-                    JSON.stringify(data.resource_links)
-                ],
-                (err) => {
-                    if (err) reject(err);
-                    else resolve();
-                }
+                    data.resource_links
+                ]
             );
-        });
+            return result.rows[0];
+        } catch (error) {
+            console.error('Error storing transcript snippet:', error);
+            throw error;
+        }
     }
 
     calculateTfIdfScoreForBatch(ticketIndex, totalTickets) {
