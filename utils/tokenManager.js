@@ -9,42 +9,36 @@ const isTokenExpired = (expiryDate) => {
 };
 
 // Helper function to update tokens in database
-const updateTokens = (userId, service, tokens) => {
-    return new Promise((resolve, reject) => {
+const updateTokens = async (userId, service, tokens) => {
+    try {
         const fields = service === 'jira' 
             ? ['jira_access_token', 'jira_refresh_token', 'jira_token_expiry']
             : ['webex_access_token', 'webex_refresh_token', 'webex_token_expiry'];
 
-        const stmt = db.prepare(`
-            UPDATE users 
-            SET ${fields[0]} = ?,
-                ${fields[1]} = ?,
-                ${fields[2]} = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        `);
-
-        stmt.run([tokens.access_token, tokens.refresh_token, tokens.expiry, userId], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve();
-            }
-        });
-        stmt.finalize();
-    });
+        await db.query(
+            `UPDATE users 
+             SET ${fields[0]} = $1,
+                 ${fields[1]} = $2,
+                 ${fields[2]} = $3,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = $4`,
+            [tokens.access_token, tokens.refresh_token, tokens.expiry, userId]
+        );
+    } catch (error) {
+        console.error('Error updating tokens:', error);
+        throw error;
+    }
 };
 
 // Jira token refresh function
 const refreshJiraToken = async (userId) => {
     try {
         // Get current tokens from database
-        const user = await new Promise((resolve, reject) => {
-            db.get('SELECT jira_refresh_token, jira_token_expiry FROM users WHERE id = ?', [userId], (err, row) => {
-                if (err) reject(err);
-                else resolve(row);
-            });
-        });
+        const result = await db.query(
+            'SELECT jira_refresh_token, jira_token_expiry FROM users WHERE id = $1',
+            [userId]
+        );
+        const user = result.rows[0];
 
         if (!user || !user.jira_refresh_token) {
             throw new Error('No refresh token found');
@@ -83,12 +77,11 @@ const refreshJiraToken = async (userId) => {
 const refreshWebexToken = async (userId) => {
     try {
         // Get current tokens from database
-        const user = await new Promise((resolve, reject) => {
-            db.get('SELECT webex_refresh_token, webex_token_expiry, webex_user_id FROM users WHERE id = ?', [userId], (err, row) => {
-                if (err) reject(err);
-                else resolve(row);
-            });
-        });
+        const result = await db.query(
+            'SELECT webex_refresh_token, webex_token_expiry, webex_user_id FROM users WHERE id = $1',
+            [userId]
+        );
+        const user = result.rows[0];
 
         if (!user || !user.webex_refresh_token) {
             throw new Error('No refresh token found');
@@ -129,32 +122,22 @@ const refreshWebexToken = async (userId) => {
         }
 
         // Update tokens in database
-        await new Promise((resolve, reject) => {
-            const stmt = db.prepare(`
-                UPDATE users 
-                SET webex_access_token = ?,
-                    webex_refresh_token = ?,
-                    webex_token_expiry = ?,
-                    webex_user_id = COALESCE(?, webex_user_id),
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            `);
-
-            stmt.run([
+        await db.query(
+            `UPDATE users 
+             SET webex_access_token = $1,
+                 webex_refresh_token = $2,
+                 webex_token_expiry = $3,
+                 webex_user_id = COALESCE($4, webex_user_id),
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = $5`,
+            [
                 newTokens.access_token,
                 newTokens.refresh_token,
                 newTokens.expiry,
                 newTokens.webex_user_id,
                 userId
-            ], function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve();
-                }
-            });
-            stmt.finalize();
-        });
+            ]
+        );
 
         return newTokens.access_token;
     } catch (error) {
