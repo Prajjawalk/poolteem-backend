@@ -60,7 +60,7 @@ const refreshJiraToken = async (userId) => {
         const newTokens = {
             access_token: response.data.access_token,
             refresh_token: response.data.refresh_token,
-            expiry: parseInt((Date.now() / 1000).toFixed()) + response.data.expires_in
+            expiry: new Date(Date.now() + response.data.expires_in * 1000).toISOString()
         };
 
         // Update tokens in database
@@ -103,7 +103,7 @@ const refreshWebexToken = async (userId) => {
         const newTokens = {
             access_token: response.data.access_token,
             refresh_token: response.data.refresh_token,
-            expiry: parseInt((Date.now() / 1000).toFixed()) + response.data.expires_in
+            expiry: new Date(Date.now() + response.data.expires_in * 1000).toISOString()
         };
 
         // If we don't have the Webex user ID, fetch it
