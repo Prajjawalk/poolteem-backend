@@ -140,7 +140,7 @@ router.post('/jira-tokens', authenticateToken, async (req, res) => {
              jira_token_expiry = $3,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $4`,
-        [accessToken, refreshToken, expiry, req.user.id]
+        [accessToken, refreshToken, parseInt(expiry), req.user.id]
       );
       console.log(`Jira tokens updated for user ${req.user.id}`);
       res.json({ message: 'Jira tokens updated successfully' });
@@ -189,7 +189,7 @@ router.post('/webex-tokens', authenticateToken, async (req, res) => {
              webex_token_expiry = $3,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $4`,
-        [accessToken, refreshToken, expiry, req.user.id]
+        [accessToken, refreshToken, parseInt(expiry), req.user.id]
       );
       console.log(`Webex tokens updated for user ${req.user.id}`);
       res.json({ message: 'Webex tokens updated successfully' });
