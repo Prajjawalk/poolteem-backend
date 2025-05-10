@@ -64,7 +64,7 @@ router.post('/', async function(req, res, next) {
         return res.status(200).send('Jira cloud id not found');
        } 
 
-       const JiraHost = `https://api.atlassian.com/ex/jira/${jiraCloudId}`
+       const JiraHost = `api.atlassian.com/ex/jira/${jiraCloudId}`
 
         // Process the transcript and get ticket recommendations
         const { result, recommendations } = await transcriptProcessor.processTranscript(transcript, meetingId, {
