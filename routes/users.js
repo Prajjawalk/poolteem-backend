@@ -14,6 +14,7 @@ const authenticateToken = async (req, res, next) => {
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
+    console.log('Authentication failed: No token provided');
     return res.status(401).json({ error: 'Access token required' });
   }
 
@@ -23,11 +24,13 @@ const authenticateToken = async (req, res, next) => {
     const user = result.rows[0];
     
     if (!user) {
+      console.log(`Authentication failed: User not found for ID ${decoded.userId}`);
       return res.status(401).json({ error: 'User not found' });
     }
     req.user = user;
     next();
   } catch (error) {
+    console.error('Authentication failed: Invalid token', error);
     return res.status(403).json({ error: 'Invalid token' });
   }
 };
@@ -47,6 +50,7 @@ router.post('/auth/google', async (req, res) => {
     const user = result.rows[0];
 
     if (!user) {
+      console.log(`Creating new user for Google ID ${payload.sub}`);
       // Create new user
       const insertResult = await db.query(
         'INSERT INTO users (name, email, google_id) VALUES ($1, $2, $3) RETURNING *',
@@ -60,11 +64,13 @@ router.post('/auth/google', async (req, res) => {
         { expiresIn: '24h' }
       );
 
+      console.log(`New user created successfully: ${newUser.email}`);
       res.json({ 
         token: jwtToken, 
         user: newUser
       });
     } else {
+      console.log(`Existing user logged in: ${user.email}`);
       // Existing user
       const jwtToken = jwt.sign(
         { userId: user.id },
@@ -75,6 +81,7 @@ router.post('/auth/google', async (req, res) => {
       res.json({ token: jwtToken, user });
     }
   } catch (error) {
+    console.error('Google authentication failed:', error);
     res.status(401).json({ error: 'Invalid Google token' });
   }
 });
@@ -90,8 +97,10 @@ router.post('/profile', authenticateToken, async (req, res) => {
     );
 
     const result = await db.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
+    console.log(`Profile updated for user ${req.user.id}`);
     res.json(result.rows[0]);
   } catch (error) {
+    console.error('Error updating profile:', error);
     res.status(500).json({ error: 'Error updating profile' });
   }
 });
@@ -103,6 +112,11 @@ router.post('/jira-tokens', authenticateToken, async (req, res) => {
     
     // Validate all required fields are present
     if (!accessToken || !refreshToken || !expiry) {
+      console.log('Jira token update failed: Missing required fields', {
+        hasAccessToken: !!accessToken,
+        hasRefreshToken: !!refreshToken,
+        hasExpiry: !!expiry
+      });
       return res.status(400).json({ error: 'All token fields are required' });
     }
 
@@ -128,11 +142,14 @@ router.post('/jira-tokens', authenticateToken, async (req, res) => {
          WHERE id = $4`,
         [accessToken, refreshToken, expiry, req.user.id]
       );
+      console.log(`Jira tokens updated for user ${req.user.id}`);
       res.json({ message: 'Jira tokens updated successfully' });
     } else {
+      console.log(`Jira tokens still valid for user ${req.user.id}`);
       res.status(400).json({ error: 'Current tokens are still valid' });
     }
   } catch (error) {
+    console.error('Error updating Jira tokens:', error);
     res.status(500).json({ error: 'Error updating Jira tokens' });
   }
 });
@@ -144,6 +161,11 @@ router.post('/webex-tokens', authenticateToken, async (req, res) => {
     
     // Validate all required fields are present
     if (!accessToken || !refreshToken || !expiry) {
+      console.log('Webex token update failed: Missing required fields', {
+        hasAccessToken: !!accessToken,
+        hasRefreshToken: !!refreshToken,
+        hasExpiry: !!expiry
+      });
       return res.status(400).json({ error: 'All token fields are required' });
     }
 
@@ -169,11 +191,14 @@ router.post('/webex-tokens', authenticateToken, async (req, res) => {
          WHERE id = $4`,
         [accessToken, refreshToken, expiry, req.user.id]
       );
+      console.log(`Webex tokens updated for user ${req.user.id}`);
       res.json({ message: 'Webex tokens updated successfully' });
     } else {
+      console.log(`Webex tokens still valid for user ${req.user.id}`);
       res.status(400).json({ error: 'Current tokens are still valid' });
     }
   } catch (error) {
+    console.error('Error updating Webex tokens:', error);
     res.status(500).json({ error: 'Error updating Webex tokens' });
   }
 });
@@ -185,6 +210,7 @@ router.post('/refresh-jira-token', authenticateToken, async (req, res) => {
     const user = result.rows[0];
     
     if (!user || !user.jira_refresh_token) {
+      console.log(`Jira refresh token not found for user ${req.user.id}`);
       return res.status(404).json({ error: 'User or refresh token not found' });
     }
 
@@ -202,8 +228,10 @@ router.post('/refresh-jira-token', authenticateToken, async (req, res) => {
     //   [newTokens.access_token, newTokens.refresh_token, new Date(Date.now() + newTokens.expires_in * 1000), req.user.id]
     // );
 
+    console.log(`Jira token refresh endpoint called for user ${req.user.id}`);
     res.json({ message: 'Jira token refresh endpoint' });
   } catch (error) {
+    console.error('Error refreshing Jira token:', error);
     res.status(500).json({ error: 'Error refreshing Jira token' });
   }
 });
@@ -213,9 +241,11 @@ router.post('/refresh-webex-token', authenticateToken, async (req, res) => {
   try {
     db.get('SELECT webex_refresh_token FROM users WHERE id = ?', [req.user.id], (err, user) => {
       if (err) {
+        console.error('Database error checking Webex refresh token:', err);
         return res.status(500).json({ error: 'Database error' });
       }
       if (!user || !user.webex_refresh_token) {
+        console.log(`Webex refresh token not found for user ${req.user.id}`);
         return res.status(404).json({ error: 'User or refresh token not found' });
       }
 
@@ -235,9 +265,11 @@ router.post('/refresh-webex-token', authenticateToken, async (req, res) => {
       // stmt.run([newTokens.access_token, newTokens.refresh_token, new Date(Date.now() + newTokens.expires_in * 1000), req.user.id]);
       // stmt.finalize();
 
+      console.log(`Webex token refresh endpoint called for user ${req.user.id}`);
       res.json({ message: 'Webex token refresh endpoint' });
     });
   } catch (error) {
+    console.error('Error refreshing Webex token:', error);
     res.status(500).json({ error: 'Error refreshing Webex token' });
   }
 });
@@ -250,13 +282,16 @@ router.post('/webex-webhook', authenticateToken, async (req, res) => {
     // Get user's Webex access token
     db.get('SELECT webex_access_token FROM users WHERE id = ?', [req.user.id], async (err, user) => {
       if (err) {
+        console.error('Database error getting Webex access token:', err);
         return res.status(500).json({ error: 'Database error' });
       }
       if (!user || !user.webex_access_token) {
+        console.log(`Webex access token not found for user ${req.user.id}`);
         return res.status(404).json({ error: 'Webex access token not found' });
       }
 
       try {
+        console.log(`Creating Webex webhook for user ${req.user.id} with target URL: ${targetUrl}`);
         // Create webhook in Webex
         const webexResponse = await axios.post(
           'https://webexapis.com/v1/webhooks',
@@ -282,8 +317,10 @@ router.post('/webex-webhook', authenticateToken, async (req, res) => {
         
         stmt.run([req.user.id, webexResponse.data.id, targetUrl], function(err) {
           if (err) {
+            console.error('Error storing webhook information:', err);
             return res.status(500).json({ error: 'Error storing webhook information' });
           }
+          console.log(`Webhook created successfully for user ${req.user.id}`);
           res.json({
             message: 'Webhook created successfully',
             webhookId: webexResponse.data.id
@@ -291,10 +328,12 @@ router.post('/webex-webhook', authenticateToken, async (req, res) => {
         });
         stmt.finalize();
       } catch (webexError) {
+        console.error('Error creating Webex webhook:', webexError);
         res.status(500).json({ error: 'Error creating Webex webhook', details: webexError.message });
       }
     });
   } catch (error) {
+    console.error('Error processing webhook creation:', error);
     res.status(500).json({ error: 'Error processing webhook creation' });
   }
 });
@@ -305,13 +344,16 @@ router.delete('/webex-webhook', authenticateToken, async (req, res) => {
     // Get webhook information from database
     db.get('SELECT webex_webhooks.webhook_id, users.webex_access_token FROM webex_webhooks JOIN users ON webex_webhooks.user_id = users.id WHERE webex_webhooks.user_id = ?', [req.user.id], async (err, result) => {
       if (err) {
+        console.error('Database error getting webhook information:', err);
         return res.status(500).json({ error: 'Database error' });
       }
       if (!result || !result.webhook_id || !result.webex_access_token) {
+        console.log(`Webhook or access token not found for user ${req.user.id}`);
         return res.status(404).json({ error: 'Webhook or access token not found' });
       }
 
       try {
+        console.log(`Deleting Webex webhook ${result.webhook_id} for user ${req.user.id}`);
         // Delete webhook from Webex
         await axios.delete(
           `https://webexapis.com/v1/webhooks/${result.webhook_id}`,
@@ -326,16 +368,20 @@ router.delete('/webex-webhook', authenticateToken, async (req, res) => {
         const stmt = db.prepare('DELETE FROM webex_webhooks WHERE user_id = ?');
         stmt.run([req.user.id], function(err) {
           if (err) {
+            console.error('Error deleting webhook from database:', err);
             return res.status(500).json({ error: 'Error deleting webhook from database' });
           }
+          console.log(`Webhook deleted successfully for user ${req.user.id}`);
           res.json({ message: 'Webhook deleted successfully' });
         });
         stmt.finalize();
       } catch (webexError) {
+        console.error('Error deleting Webex webhook:', webexError);
         res.status(500).json({ error: 'Error deleting Webex webhook', details: webexError.message });
       }
     });
   } catch (error) {
+    console.error('Error processing webhook deletion:', error);
     res.status(500).json({ error: 'Error processing webhook deletion' });
   }
 });
@@ -348,6 +394,7 @@ router.get('/jira/status', authenticateToken, async (req, res) => {
       [req.user.id],
       (err, user) => {
         if (err) {
+          console.error('Database error checking Jira status:', err);
           return res.status(500).json({ error: 'Database error' });
         }
         
@@ -356,10 +403,12 @@ router.get('/jira/status', authenticateToken, async (req, res) => {
           user.jira_refresh_token && 
           user.jira_token_expiry;
         
+        console.log(`Jira connection status for user ${req.user.id}: ${isConnected ? 'connected' : 'disconnected'}`);
         res.json({ connected: !!isConnected });
       }
     );
   } catch (error) {
+    console.error('Error checking Jira connection status:', error);
     res.status(500).json({ error: 'Error checking Jira connection status' });
   }
 });
@@ -372,6 +421,7 @@ router.get('/webex/status', authenticateToken, async (req, res) => {
       [req.user.id],
       (err, user) => {
         if (err) {
+          console.error('Database error checking Webex status:', err);
           return res.status(500).json({ error: 'Database error' });
         }
         
@@ -380,10 +430,12 @@ router.get('/webex/status', authenticateToken, async (req, res) => {
           user.webex_refresh_token && 
           user.webex_token_expiry;
         
+        console.log(`Webex connection status for user ${req.user.id}: ${isConnected ? 'connected' : 'disconnected'}`);
         res.json({ connected: !!isConnected });
       }
     );
   } catch (error) {
+    console.error('Error checking Webex connection status:', error);
     res.status(500).json({ error: 'Error checking Webex connection status' });
   }
 });
@@ -393,11 +445,15 @@ router.get('/webex/webhook/status', authenticateToken, async (req, res) => {
   try {
     db.get('SELECT webhook_id FROM webex_webhooks WHERE user_id = ?', [req.user.id], (err, user) => {
       if (err) {
+        console.error('Database error checking Webex webhook status:', err);
         return res.status(500).json({ error: 'Database error' });
       }
-      res.json({ webhookEnabled: !!user?.webhook_id });
+      const webhookEnabled = !!user?.webhook_id;
+      console.log(`Webex webhook status for user ${req.user.id}: ${webhookEnabled ? 'enabled' : 'disabled'}`);
+      res.json({ webhookEnabled });
     });
   } catch (error) {
+    console.error('Error checking Webex webhook status:', error);
     res.status(500).json({ error: 'Error checking Webex webhook status' });
   }
 });
