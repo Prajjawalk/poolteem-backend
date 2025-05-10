@@ -33,6 +33,7 @@ router.post('/', async function(req, res, next) {
         const jiraTokenExpiry = new Date(user.jira_token_expiry);
         if (jiraTokenExpiry < new Date()) {
             const newJiraTokens = await refreshJiraToken(user.id);
+            user.jira_access_token = newJiraTokens.access_token;
             await db.run('UPDATE users SET jira_access_token = ?, jira_token_expiry = ? WHERE id = ?', [newJiraTokens.access_token, new Date(newJiraTokens.expires_in * 1000), user.id]);
         }
 
@@ -40,6 +41,7 @@ router.post('/', async function(req, res, next) {
         const webexTokenExpiry = new Date(user.webex_token_expiry);
         if (webexTokenExpiry < new Date()) {
             const newWebexTokens = await refreshWebexToken(user.id);
+            user.webex_access_token = newWebexTokens.access_token;
             await db.run('UPDATE users SET webex_access_token = ?, webex_token_expiry = ? WHERE id = ?', [newWebexTokens.access_token, new Date(newWebexTokens.expires_in * 1000), user.id]);
         }
 
