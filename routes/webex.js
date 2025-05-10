@@ -29,6 +29,20 @@ router.post('/', async function(req, res, next) {
             return res.status(200).send('User not found');
         }
 
+        // Check and update Jira access token if expired
+        const jiraTokenExpiry = new Date(user.jira_token_expiry);
+        if (jiraTokenExpiry < new Date()) {
+            const newJiraTokens = await refreshJiraToken(user.id);
+            await db.run('UPDATE users SET jira_access_token = ?, jira_token_expiry = ? WHERE id = ?', [newJiraTokens.access_token, new Date(newJiraTokens.expires_in * 1000), user.id]);
+        }
+
+        // Check and update Webex access token if expired
+        const webexTokenExpiry = new Date(user.webex_token_expiry);
+        if (webexTokenExpiry < new Date()) {
+            const newWebexTokens = await refreshWebexToken(user.id);
+            await db.run('UPDATE users SET webex_access_token = ?, webex_token_expiry = ? WHERE id = ?', [newWebexTokens.access_token, new Date(newWebexTokens.expires_in * 1000), user.id]);
+        }
+
         // Get the transcript from Webex API
         const transcript = await fetchTranscript(req.body.data.id, user.webex_access_token);
         const meetingId = req.body.data.meetingId;
