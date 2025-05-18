@@ -4,36 +4,11 @@ const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const db = require('../db');
-
+const { authenticateToken } = require('../middleware/auth');
 // Initialize Google OAuth client
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// Authentication Middleware
-const authenticateToken = async (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
 
-  if (!token) {
-    console.log('Authentication failed: No token provided');
-    return res.status(401).json({ error: 'Access token required' });
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const result = await db.query('SELECT * FROM users WHERE id = $1', [decoded.userId]);
-    const user = result.rows[0];
-    
-    if (!user) {
-      console.log(`Authentication failed: User not found for ID ${decoded.userId}`);
-      return res.status(401).json({ error: 'User not found' });
-    }
-    req.user = user;
-    next();
-  } catch (error) {
-    console.error('Authentication failed: Invalid token', error);
-    return res.status(403).json({ error: 'Invalid token' });
-  }
-};
 
 // Google OAuth Sign Up
 router.post('/auth/google', async (req, res) => {
@@ -89,11 +64,11 @@ router.post('/auth/google', async (req, res) => {
 // Create/Update User Profile
 router.post('/profile', authenticateToken, async (req, res) => {
   try {
-    const { name, username } = req.body;
+    const { name, username, companyName, companyWebsite } = req.body;
     
     await db.query(
-      'UPDATE users SET name = $1, username = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
-      [name, username, req.user.id]
+      'UPDATE users SET name = $1, username = $2, company_name = $3, company_website = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5',
+      [name, username, companyName, companyWebsite, req.user.id]
     );
 
     const result = await db.query('SELECT * FROM users WHERE id = $1', [req.user.id]);

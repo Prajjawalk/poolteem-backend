@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS transcript_snippets (
     id SERIAL PRIMARY KEY,
-    webex_meeting_id TEXT NOT NULL,
+    webex_meeting_id TEXT,
     jira_ticket_id TEXT NOT NULL,
     original_transcript TEXT NOT NULL,
     summary TEXT NOT NULL,
@@ -9,14 +9,17 @@ CREATE TABLE IF NOT EXISTS transcript_snippets (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_webex_meeting_id ON transcript_snippets(webex_meeting_id);
-CREATE INDEX IF NOT EXISTS idx_jira_ticket_id ON transcript_snippets(jira_ticket_id);
+CREATE INDEX IF NOT EXISTS idx_webex_meeting_id ON transcript_snippets (webex_meeting_id);
+
+CREATE INDEX IF NOT EXISTS idx_jira_ticket_id ON transcript_snippets (jira_ticket_id);
 
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     name TEXT,
     username TEXT UNIQUE,
     email TEXT UNIQUE,
+    company_name TEXT,
+    company_website TEXT,
     google_id TEXT UNIQUE,
     jira_access_token TEXT,
     jira_refresh_token TEXT,
@@ -36,5 +39,17 @@ CREATE TABLE IF NOT EXISTS webex_webhooks (
     target_url TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-); 
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS feedback (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    rating INTEGER NOT NULL,
+    feedback_text TEXT,
+    integration_suggestion TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback (user_id);

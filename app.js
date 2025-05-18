@@ -20,10 +20,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 const webexRouter = require('./routes/webex');
 const transcriptsRouter = require('./routes/transcripts');
 const usersRouter = require('./routes/users');
+const llmRouter = require('./routes/llm');
+const feedbackRouter = require('./routes/feedback');
 // Use routes
 app.use('/users', usersRouter);
 app.use('/webex', webexRouter);
 app.use('/transcripts', transcriptsRouter);
+app.use('/llm', llmRouter);
+app.use('/feedback', feedbackRouter);
 
 // Error handler
 app.use(function(err, req, res, next) {
