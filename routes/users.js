@@ -412,4 +412,39 @@ router.get('/webex/webhook/status', authenticateToken, async (req, res) => {
   }
 });
 
+// Get current user data
+router.get('/me', authenticateToken, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT 
+        id, 
+        email, 
+        name, 
+        username, 
+        CASE WHEN username IS NOT NULL THEN true ELSE false END as has_profile,
+        CASE WHEN jira_access_token IS NOT NULL THEN true ELSE false END as jira_connected,
+        CASE WHEN webex_access_token IS NOT NULL THEN true ELSE false END as webex_connected,
+        CASE WHEN EXISTS (SELECT 1 FROM webex_webhooks WHERE user_id = users.id) THEN true ELSE false END as webex_webhook_enabled,
+        company_name as company_name,
+        company_website as company_website
+      FROM users 
+      WHERE id = $1`,
+      [req.user.id]
+    );
+
+    const user = result.rows[0];
+    
+    if (!user) {
+      console.log(`User not found for ID ${req.user.id}`);
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    console.log(`User data fetched for ID ${req.user.id}`);
+    res.json(user);
+  } catch (error) {
+    console.error('Error fetching user data:', error);
+    res.status(500).json({ error: 'Error fetching user data' });
+  }
+});
+
 module.exports = router;
