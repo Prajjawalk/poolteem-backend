@@ -121,7 +121,7 @@ router.post('/jira-tokens', authenticateToken, async (req, res) => {
       res.json({ message: 'Jira tokens updated successfully' });
     } else {
       console.log(`Jira tokens still valid for user ${req.user.id}`);
-      res.status(400).json({ error: 'Current tokens are still valid' });
+      res.status(200).json({ message: 'Current tokens are still valid' });
     }
   } catch (error) {
     console.error('Error updating Jira tokens:', error);
